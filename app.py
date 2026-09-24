@@ -5,9 +5,9 @@ import pyotp
 from SmartApi import SmartConnect
 
 # Page Setup
-st.set_page_config(page_title="AngelOne Multi-Segment Live Tracker", layout="wide")
+st.set_page_config(page_title="AngelOne Live Market Tracker", layout="wide")
 
-st.title("📊 LIVE Market Tracker (NSE, BSE, MCX, FnO)")
+st.title("📊 LIVE Market Tracker (Indices, FnO, Equity & MCX)")
 st.caption("Direct Server Connection | Real-Time Price Tracking & 5-Min Intervals")
 
 # Load Credentials Automatically from Secrets
@@ -24,27 +24,58 @@ except Exception:
 st.sidebar.header("⚙️ Market Data Setup")
 
 # Expanded Exchange Selection
-exchange = st.sidebar.selectbox("Exchange Segment", ["NFO (NSE FnO)", "BFO (BSE FnO)", "NSE (Equity)", "BSE (Equity)", "MCX (Commodity)"])
+exchange = st.sidebar.selectbox(
+    "Exchange Segment", 
+    [
+        "Indices (NIFTY / SENSEX / BANKNIFTY)", 
+        "NFO (NSE FnO)", 
+        "BFO (BSE FnO)", 
+        "NSE (Equity)", 
+        "BSE (Equity)", 
+        "MCX (Commodity)"
+    ]
+)
 
-# Dynamic Symbol Setup based on Exchange
-if exchange == "NFO (NSE FnO)":
-    symbols_preset = {"NIFTY 26SEP24 FUT": "12345", "BANKNIFTY 26SEP24 FUT": "67890", "FINNIFTY 26SEP24 FUT": "11223"}
+# Dynamic Symbol & Token Presets
+if exchange == "Indices (NIFTY / SENSEX / BANKNIFTY)":
+    index_choice = st.sidebar.selectbox("Select Index", ["NIFTY 50", "SENSEX", "BANKNIFTY", "FINNIFTY"])
+    if index_choice == "NIFTY 50":
+        default_symbol = "Nifty 50"
+        default_token = "99926000"
+        api_exchange = "NSE"
+    elif index_choice == "SENSEX":
+        default_symbol = "SENSEX"
+        default_token = "99919000"
+        api_exchange = "BSE"
+    elif index_choice == "BANKNIFTY":
+        default_symbol = "Nifty Bank"
+        default_token = "99926009"
+        api_exchange = "NSE"
+    else:  # FINNIFTY
+        default_symbol = "Nifty Fin Service"
+        default_token = "99926037"
+        api_exchange = "NSE"
+
+elif exchange == "NFO (NSE FnO)":
     default_symbol = "NIFTY26SEPFUT"
     default_token = "12345"
     api_exchange = "NFO"
+
 elif exchange == "BFO (BSE FnO)":
-    symbols_preset = {"SENSEX 26SEP24 FUT": "99887", "BANKEX 26SEP24 FUT": "77665"}
     default_symbol = "BSX26SEPFUT"
     default_token = "99887"
     api_exchange = "BFO"
+
 elif exchange == "NSE (Equity)":
     default_symbol = "SBIN-EQ"
     default_token = "3045"
     api_exchange = "NSE"
+
 elif exchange == "BSE (Equity)":
     default_symbol = "SENSEX"
     default_token = "500112"
     api_exchange = "BSE"
+
 else:  # MCX Commodity
     default_symbol = "CRUDEOIL24SEPFUT"
     default_token = "288509"
