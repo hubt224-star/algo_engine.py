@@ -5,103 +5,100 @@ import pyotp
 from SmartApi import SmartConnect
 
 # Page Setup
-st.set_page_config(page_title="AngelOne LIVE Trading Terminal", layout="wide")
+st.set_page_config(page_title="AngelOne Live Market Tracker", layout="wide")
 
-st.title("🔴 LIVE AngelOne Market Execution Terminal")
-st.caption("Direct Server Connection | Real-Time Live Prices & 5-Min Timeframe Execution")
+st.title("📊 LIVE Market Data Tracker (No Trade Mode)")
+st.caption("Direct Server Connection | Only Real-Time Price Tracking & 5-Min Intervals")
 
-# Sidebar - Login Credentials
-st.sidebar.header("🔑 AngelOne Live Credentials")
-api_key = st.sidebar.text_input("API Key", type="password")
-client_code = st.sidebar.text_input("Client Code / User ID")
-pin = st.sidebar.text_input("MPIN", type="password")
-totp_secret = st.sidebar.text_input("TOTP Secret Key (32-digit)", type="password")
+# Load Credentials Automatically from Secrets
+try:
+    API_KEY = st.secrets["API_KEY"]
+    CLIENT_CODE = st.secrets["CLIENT_CODE"]
+    PIN = st.secrets["PIN"]
+    TOTP_SECRET = st.secrets["TOTP_SECRET"]
+    CREDENTIALS_FOUND = True
+except Exception:
+    CREDENTIALS_FOUND = False
 
-st.sidebar.divider()
-
-# Sidebar - Asset & Order Config
-st.sidebar.header("⚙️ Live Trade Setup")
+# Sidebar Controls
+st.sidebar.header("⚙️ Market Data Setup")
 exchange = st.sidebar.selectbox("Exchange", ["NSE", "MCX", "BSE"])
-trading_symbol = st.sidebar.text_input("Trading Symbol (e.g. SBIN-EQ, CRUDEOIL24SEPFUT)", value="SBIN-EQ")
+trading_symbol = st.sidebar.text_input("Symbol (e.g. SBIN-EQ, CRUDEOIL24SEPFUT, GOLD)", value="SBIN-EQ")
 symbol_token = st.sidebar.text_input("Symbol Token", value="3045")
 
-total_qty = st.sidebar.number_input("Total Order Quantity", min_value=1, value=10)
-slice_size = st.sidebar.number_input("Slice Size per 5-Min", min_value=1, value=2)
+refresh_rate = st.sidebar.slider("Price Refresh Interval (Seconds)", min_value=1, max_value=300, value=5)
 
-# Main UI Metrics
-m1, m2, m3, m4 = st.columns(4)
-m1.metric("Exchange / Symbol", f"{exchange}: {trading_symbol}")
-m2.metric("Target Quantity", total_qty)
-metric_ltp = m3.empty()
-metric_status = m4.empty()
+# Metrics UI
+m1, m2, m3 = st.columns(3)
+m1.metric("Selected Asset", f"{exchange}: {trading_symbol}")
+metric_ltp = m2.empty()
+metric_status = m3.empty()
 
 metric_ltp.metric("LIVE LTP", "₹0.00")
-metric_status.metric("Market Status", "OFFLINE", delta_color="off")
 
-# Direct Connection Engine
-if st.sidebar.button("⚡ Connect LIVE & Start Execution", type="primary"):
-    if not (api_key and client_code and pin and totp_secret):
-        st.error("❌ Sabhi AngelOne Credentials bharna zaroori hai!")
+if not CREDENTIALS_FOUND:
+    metric_status.metric("Market Status", "CREDENTIALS MISSING", delta_color="off")
+    st.error("⚠️ Streamlit Secrets mein Credentials nahi hain. App Settings -> Secrets mein daalein.")
+else:
+    metric_status.metric("Market Status", "READY TO TRACK", delta="ONLINE")
+
+st.divider()
+
+col_chart, col_logs = st.columns([2, 1])
+
+with col_chart:
+    st.subheader("📈 Live Price Movement Chart")
+    chart_box = st.empty()
+
+with col_logs:
+    st.subheader("📋 5-Min Price Feed Logs")
+    log_box = st.empty()
+
+# Start Tracking Button
+if st.sidebar.button("📡 Connect Live Feed", type="primary"):
+    if not CREDENTIALS_FOUND:
+        st.error("Pehle Streamlit Settings mein credentials save karein.")
     else:
         try:
-            # 1. Login to AngelOne SmartAPI
-            st.info("AngelOne Live Servers se connect ho raha hai...")
-            smart_api = SmartConnect(api_key=api_key)
-            totp = pyotp.TOTP(totp_secret).now()
-            session = smart_api.generateSession(client_code, pin, totp)
-            
-            if not session['status']:
-                st.error(f"❌ Login Failed: {session['message']}")
+            st.info("AngelOne Live Market Feed se connect kar rahe hain...")
+            smart_api = SmartConnect(api_key=API_KEY)
+            totp = pyotp.TOTP(TOTP_SECRET).now()
+            session = smart_api.generateSession(CLIENT_CODE, PIN, totp)
+
+            if not session.get('status'):
+                st.error(f"❌ Login Failed: {session.get('message')}")
             else:
-                metric_status.metric("Market Status", "CONNECTED (LIVE)", delta="ONLINE")
-                st.success("✅ AngelOne Live Market Connection Successful!")
-                
-                # 2. Live Execution Loop
-                executed = 0
-                slices = int(total_qty / slice_size)
-                
-                st.subheader("📋 Real-Time Execution Logs")
-                log_box = st.empty()
+                metric_status.metric("Market Status", "LIVE STREAMING", delta="ACTIVE")
+                st.success("✅ Connected to AngelOne Live Market Data!")
+
+                price_history = []
                 logs = []
-                
-                for i in range(slices):
-                    # Fetch DIRECT LIVE PRICE from AngelOne
+
+                # Infinite/Continuous Price Tracker Loop
+                while True:
+                    # FETCH DIRECT LIVE PRICE FROM ANGELONE (NO ORDERS PLACED)
                     ltp_response = smart_api.ltpData(exchange, trading_symbol, symbol_token)
-                    
+
                     if ltp_response and ltp_response.get('status') and ltp_response.get('data'):
-                        live_price = ltp_response['data']['ltp']
-                        metric_ltp.metric("LIVE LTP", f"₹{live_price}")
-                        
-                        # PLACE LIVE ORDER ON EXCHANGE
-                        order_params = {
-                            "variety": "NORMAL",
-                            "tradingsymbol": trading_symbol,
-                            "symboltoken": symbol_token,
-                            "transactiontype": "BUY",
-                            "exchange": exchange,
-                            "ordertype": "MARKET",
-                            "producttype": "INTRADAY",
-                            "duration": "DAY",
-                            "price": "0",
-                            "quantity": str(slice_size)
-                        }
-                        
-                        # Trigger Order to Exchange
-                        order_id = smart_api.placeOrder(order_params)
-                        
-                        executed += slice_size
-                        log_text = f"[{time.strftime('%H:%M:%S')}] 5-Min Slice {i+1}/{slices}: LIVE Buy Order Sent @ ₹{live_price} | Order ID: {order_id}"
+                        live_price = float(ltp_response['data']['ltp'])
+                        current_time = time.strftime('%H:%M:%S')
+
+                        metric_ltp.metric("LIVE LTP", f"₹{live_price:.2f}")
+
+                        # Update Chart Data
+                        price_history.append({"Time": current_time, "Price": live_price})
+                        df_chart = pd.DataFrame(price_history)
+                        chart_box.line_chart(df_chart.set_index("Time")["Price"])
+
+                        # Log Entry
+                        log_text = f"[{current_time}] {exchange}:{trading_symbol} -> Live LTP: ₹{live_price:.2f}"
                         logs.insert(0, log_text)
-                        log_box.code("\n".join(logs), language="text")
-                        
+                        log_box.code("\n".join(logs[:15]), language="text")
+
                     else:
-                        st.warning("⚠️ Live price fetch karne mein issue aa raha hai. Token check karein.")
-                    
-                    # Wait for 5-minute candle interval (300 seconds)
-                    if i < slices - 1:
-                        time.sleep(300)
-                        
-                st.success("🎉 All Live 5-Min Slices Executed Successfully on AngelOne!")
-                
+                        st.warning("⚠️ Live price receive nahi ho pa raha. Token check karein.")
+
+                    time.sleep(refresh_rate)
+
         except Exception as e:
-            st.error(f"🚨 System Error: {str(e)}")
+            st.error(f"🚨 Error: {str(e)}")
